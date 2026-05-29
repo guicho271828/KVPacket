@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=68"]
-build-backend = "setuptools.backends.legacy:build"
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
 
 [project]
 name = "kv-packet"
@@ -26,6 +26,19 @@ dependencies = [
     "dowhen==0.1.0",
 ]
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["kv_packet*"]
+[dependency-groups]
+# Use these like:
+# pip install -e . --group dev
+# pip install askllm --group dev
+dev = [
+    "pdm>=2.24.0",
+    "mypy",
+    "mypy-extensions",
+]
+
+[tool.mypy]
+install_types = true
+non_interactive = true
+allow_redefinition = true
+check_untyped_defs = true
+disable_error_code = ["import-untyped","no-redef"]
