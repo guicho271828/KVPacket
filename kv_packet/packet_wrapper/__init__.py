@@ -64,13 +64,13 @@ class PacketWrapper:
     def wrap(self, hidden_states: torch.Tensor) -> torch.Tensor:
         """
         Wrap the hidden states with header and trailer
-        
+
         Args:
             hidden_states (torch.Tensor): The hidden states to wrap. Shape can be (seq_len, dim) or (batch_size, seq_len, dim)
         Returns:
             torch.Tensor: The wrapped hidden states with header and trailer added.
-        
-        Note: the returned tensor will have shape (seq_len + header_len + trailer_len, dim) when input is (seq_len, dim) and 
+
+        Note: the returned tensor will have shape (seq_len + header_len + trailer_len, dim) when input is (seq_len, dim) and
             shape (batch_size, seq_len + header_len + trailer_len, dim) when input is (batch_size, seq_len, dim)
         """
         assert hidden_states.dim() in (2, 3)
@@ -126,7 +126,7 @@ class PacketWrapper:
         """ Load the state dict into the PacketWrapper """
         self.header = state_dict["header"].to(self.device).to(self.dtype)
         self.trailer = state_dict["trailer"].to(self.device).to(self.dtype)
-    
+
 
     @classmethod
     def from_state_dict(cls, state_dict: WrapperStateDict, device: torch.device|None = None):
@@ -136,7 +136,7 @@ class PacketWrapper:
 
         if (dim := header.size(2)) != trailer.size(2):
             raise ValueError(f"Header and trailer must have the same dimension, but got {header.size(2)} and {trailer.size(2)}")
-        
+
         if (dtype := header.dtype) != trailer.dtype:
             raise ValueError(f"Header and trailer must have the same dtype, but got {header.dtype} and {trailer.dtype}")
 
