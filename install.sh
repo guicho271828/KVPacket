@@ -96,3 +96,5 @@ fi
 
 # $CONDA run -n $ENV uv pip install pre-commit
 # $CONDA run -n $ENV pre-commit install
+
+$CONDA run -n $ENV python load_nltk.py
