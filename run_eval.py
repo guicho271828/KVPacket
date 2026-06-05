@@ -365,6 +365,7 @@ def run_one_config(
     model = eval_cache["model"].get(model_cache_key, None)
     tokenizer = eval_cache["tokenizer"].get(model_cache_key, None)
 
+    # load a packet wrapper if not loaded
     if packet_wrapper is None and packet_wrapper_key is not None:
         assert eval_config["cache_comb"]["method"] == "kv_packet", \
             "Packet wrapper is only compatible with 'kv_packet' cache_comb method."
@@ -375,6 +376,7 @@ def run_one_config(
         print(f"Packet wrapper loaded {packet_wrapper}.")
         eval_cache["packet_wrapper"][packet_wrapper_key] = packet_wrapper
 
+    # load a model if not loaded
     if model is None or tokenizer is None:
         model = AutoModelForCausalLM.from_pretrained(
             eval_config["model"]["model_path"],
