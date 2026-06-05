@@ -100,3 +100,9 @@ Both train and eval configs use `_default.json` inheritance: a per-method overri
 2. Generate per-document KV caches, optionally compress/quantize
 3. Call the selected `cache_comb` method which concatenates/recomputes caches and generates answers
 4. Compute token-level precision/recall/F1 against ground truth
+
+### Adding a new cache combination method
+
+1. Create a new file in `kv_packet/cache_comb/methods/` implementing the `EvalCombFunc` protocol (see `abc.py` for the signature and `no_recompute.py` for a minimal example).
+2. Register it in `kv_packet/cache_comb/methods/__init__.py` by adding it to `CACHE_COMB_FUNC_DICT`.
+3. Create evaluation configs in `eval_config/<model>/<dataset>/<method_name>.json` for each model/dataset combination. Use `_default.json` inheritance — only override the `cache_comb` block.
