@@ -75,24 +75,4 @@ $CONDA env create $CONDA_OPTIONS -f $SCRIPT_DIR/environment.yml
 
 $CONDA run -n $ENV uv pip install -e . --group dev
 
-# # these libraries are NOT necessary for *building* this library.
-# # they are merely "commonly necessary" for *using* transformer effectively.
-# # Therefore they should not be added as dependency.
-# $CONDA run -n $ENV uv pip install accelerate compressed-tensors protobuf sentencepiece datasets
-
-# If a backend was requested, activate it: installs the [vllm] or [sglang]
-# extra deps and writes askllm/_active_backend.json so `import askllm` knows
-# which backend to re-export. Without -b, the env has only the huggingface
-# backend; the user can run `askllm select <backend>` later to add one.
-if [ -n "$BACKEND" ]; then
-    $CONDA run -n $ENV askllm select $BACKEND
-fi
-
-# if [ "$BACKEND" = "vllm" ]; then
-#     # vllm pulls a transformers version that conflicts with autoawq,
-#     # so autoawq must be installed after vllm.
-#     $CONDA run -n $ENV uv pip install autoawq
-# fi
-
-# $CONDA run -n $ENV uv pip install pre-commit
-# $CONDA run -n $ENV pre-commit install
+$CONDA run -n $ENV python download_models_and_datasets.py
