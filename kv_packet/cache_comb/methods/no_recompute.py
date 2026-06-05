@@ -23,6 +23,9 @@ def no_recompute_eval(
     answer_postprocess_func: Callable[[str, str], tuple[str, str]]|None = None,
     kwargs: dict|None = None
 ) -> ResultDict:
+    """
+    Baseline evaluation method.
+    """
     if kwargs is not None and kwargs != {}:
         print(f"Warning: no_recompute_eval got unexpected kwargs: {kwargs}")
 
@@ -33,18 +36,11 @@ def no_recompute_eval(
         context_ids = context_tokens["input_ids"]
         assert isinstance(context_ids, torch.Tensor)
         assert context_ids.size(0) == 1
-
-        context_cache = get_kv_caches(
-            model,
-            input_ids=context_ids,
-        )[0]
+        context_cache = get_kv_caches(model, input_ids=context_ids,)[0]
         document_kvs.insert(0, context_cache)
 
-    num_flops = 0
 
-    sample_len: list[int] = [
-        kv[0].position_ids.size(1) for kv in document_kvs
-    ]
+    sample_len: list[int] = [kv[0].position_ids.size(1) for kv in document_kvs]
     total_data_len = sum(sample_len)
 
     full_kv = concate_kv_caches(document_kvs).to_hf_cache(config=model.config)
@@ -53,22 +49,22 @@ def no_recompute_eval(
     old_pos = get_cumsum_pos(sample_len, model.device).unsqueeze(0)
     new_pos = torch.arange(total_data_len, device=model.device).unsqueeze(0)
 
-    num_flops = 0
     q_tokens = tokenizer(
         [task_prompt], return_tensors="pt", add_special_tokens=False
     ).to(model.device)
     q_ids = q_tokens["input_ids"]
     assert isinstance(q_ids, torch.Tensor)
 
-
     dummy_id = 1 if tokenizer.pad_token_id == 0 else 0
     dummy_ids = torch.ones((1, total_data_len), dtype=torch.long, device=model.device) * dummy_id
     input_ids = torch.cat([dummy_ids, q_ids], dim=1)
 
     # Start to count TTFT
+    num_flops = 0
     torch.cuda.synchronize()
     start_time = time()
 
+    # Shift data KV caches
     nope_dim = getattr(model.config, "qk_nope_head_dim", None)
     assert isinstance(nope_dim, int|None)
     full_kv = rerotate_kv_p(full_kv, model.model.rotary_emb, old_pos, new_pos, nope_dim=nope_dim)
@@ -79,7 +75,7 @@ def no_recompute_eval(
             input_ids=q_ids, # type: ignore
             past_key_values=full_kv,
         )
-    
+
     torch.cuda.synchronize()
     end_time = time()
     ttft = end_time - start_time

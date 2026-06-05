@@ -41,27 +41,20 @@ def kv_packet_eval(
         context_ids = context_tokens["input_ids"]
         assert isinstance(context_ids, torch.Tensor)
         assert context_ids.size(0) == 1
-        context_cache = get_kv_caches(
-            model,
-            context_ids,
-        )[0]
+        context_cache = get_kv_caches(model, input_ids=context_ids,)[0]
         document_kvs.insert(0, context_cache)
 
-    cache_lens: list[int] = [
-        kv[0].key.shape[2] for kv in document_kvs
-    ]
-    doc_lens: list[int] = [
-        kv[0].position_ids.shape[1] for kv in document_kvs
-    ]
+    cache_lens: list[int] = [kv[0].key.shape[2] for kv in document_kvs]
+    doc_lens: list[int] = [kv[0].position_ids.shape[1] for kv in document_kvs]
     total_cache_len = sum(cache_lens)
     total_doc_len = sum(doc_lens)
+
     full_kv = concate_kv_caches(document_kvs).to_hf_cache(config=model.config)
 
     ## We assume all cache starts from position 0
     old_pos = get_cumsum_pos(cache_lens, model.device).unsqueeze(0)
     new_pos = get_shifted_cumsum_pos(cache_lens, doc_lens, model.device).unsqueeze(0)
 
-    num_flops = 0
     q_tokens = tokenizer(
         [task_prompt], return_tensors="pt", add_special_tokens=False
     ).to(model.device)
@@ -73,6 +66,7 @@ def kv_packet_eval(
     input_ids = torch.cat([dummy_ids, q_ids], dim=1)
 
     # Start to count TTFT
+    num_flops = 0
     torch.cuda.synchronize()
     start_time = time()
 
@@ -284,6 +278,6 @@ def kv_packet_eval_attn(
         ) / (key.size(-1) ** 0.5) # [num_heads, query_len, seq_len]
         reduced_attn_weights = attn_weights.mean(dim=[0,1]) # [seq_len]
         attn_weights_list.append(reduced_attn_weights)
-    
+
     attn_weights_tensor = torch.stack(attn_weights_list, dim=0) # [num_layers, seq_len]
     return return_dict, attn_weights_tensor
