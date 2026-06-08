@@ -7,7 +7,7 @@ from kvpress import BasePress
 from contextlib import nullcontext
 from typing import Iterator
 from warnings import warn
-from ..model import SupportedModel
+from ..model import SupportedModel, is_energy_model
 from .abc import KeyValue, KVDim, PosIDDim, KeyValueDict
 from .kv_cache_state_dict import KVCacheStateDict
 from .quantization import QuantizedTensor, dequantize_tensor
@@ -169,7 +169,7 @@ class KVCache:
         Warning:
             - The huggingface Cache does not store position_ids. The position_ids
                 must be managed separately if needed.
-            - The start position for the 'generate' method in transformers is based on the 
+            - The start position for the 'generate' method in transformers is based on the
                 length of the kv_cache and the input_ids. The position will be incorrect
                 if the kv_cache is compressed. In that case, the position_ids should be
                 used to determine the correct position.
@@ -204,7 +204,7 @@ class KVCache:
                 compact_kv=None,
                 position_ids=None,
             )
-    
+
         first_layer_kv = self[self.layers[0]]
         key_shape = first_layer_kv.key.shape
         position_ids = first_layer_kv.position_ids
@@ -217,12 +217,12 @@ class KVCache:
                     warn("Position IDs differ across layers; cannot create compact_kv.")
                     compact = False
                     break
-                
+
                 if kv.key.shape != key_shape or kv.value.shape != key_shape:
                     warn("Key/Value shapes differ across layers; cannot create compact_kv.")
                     compact = False
                     break
-    
+
         if compact:
             for layer in self.layers:
                 kv = self._consolidate(layer)
@@ -390,7 +390,7 @@ def concate_kv_caches(caches: list[KVCache]) -> KVCache:
         raise ValueError("No KVCache instances to concatenate.")
 
     new_cache = KVCache()
-    
+
     for cache in caches:
         for layer, kv_list in cache._cache.items():
             if layer not in new_cache._cache:
@@ -398,6 +398,19 @@ def concate_kv_caches(caches: list[KVCache]) -> KVCache:
             new_cache._cache[layer].extend(kv_list)
 
     return new_cache
+
+
+def _generation_cache_to_hf(gen_cache) -> DynamicCache:
+    """Convert EGPT's GenerationCache to HuggingFace DynamicCache."""
+    cache = DynamicCache()
+    for layer_idx, slot in enumerate(gen_cache.cache):
+        key, value = slot.get_cache()
+        if key is None:
+            continue
+        if value is None:
+            value = key
+        cache.update(key_states=key, value_states=value, layer_idx=layer_idx)
+    return cache
 
 
 def get_kv_caches(
@@ -410,15 +423,14 @@ def get_kv_caches(
     indices_to_keep: list[int]|None=None,
 ) -> list[KVCache]:
     """
-    Get the KVCache using the provided model and inputs, with optional compression and quantization 
-    
+    Get the KVCache using the provided model and inputs, with optional compression and quantization
+
     Args:
         - model: LlamaForCausalLM model to generate the KV cache
         - input_ids: Input token IDs
         - input_embeds: Input embeddings
         - position_ids: Positional IDs for the inputs
         - compressor: Optional BasePress compressor to compress the KV cache
-        # - quantization: Optional quantization level (2, 4, or 8 bits)
     Returns:
         - KVCache: The generated (and possibly compressed/quantized) KV cache
     """
@@ -455,17 +467,34 @@ def get_kv_caches(
             pos_ids = position_ids[i].to(model.device)
             pos_ids_list.append(pos_ids[attention_mask[i].bool()].unsqueeze(0))
 
-    with torch.no_grad(), compressor(model=model) if compressor is not None else nullcontext(), KeepIndex(indices_to_keep):
-        result: CausalLMOutputWithPast = model(
-            input_ids=input_ids,
-            inputs_embeds=input_embeds,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-            use_cache=True,
-        )
-    cache = result.past_key_values
-    assert isinstance(cache, Cache)
+    # Run forward pass to collect KV cache
+    is_energy = is_energy_model(model)
+    if is_energy:
+        # EGPT: no compressor support; GenerationCache needs conversion
+        with torch.no_grad():
+            result = model(
+                input_ids=input_ids,
+                inputs_embeds=input_embeds,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                use_cache=True,
+            )
+        cache = result.past_key_values
+        if not isinstance(cache, Cache):
+            cache = _generation_cache_to_hf(cache)
+    else:
+        with torch.no_grad(), compressor(model=model) if compressor is not None else nullcontext(), KeepIndex(indices_to_keep):
+            result: CausalLMOutputWithPast = model(
+                input_ids=input_ids,
+                inputs_embeds=input_embeds,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                use_cache=True,
+            )
+        cache = result.past_key_values
+        assert isinstance(cache, Cache)
 
+    # Extract per-batch KVCache from the DynamicCache
     caches: list[KVCache] = []
     for b in range(batch_size):
         attn_mask = attention_mask[b].bool()
@@ -481,7 +510,7 @@ def get_kv_caches(
             else:
                 key = layer.keys[b : b + 1, :, attn_mask, :]
                 value = layer.values[b : b + 1, :, attn_mask, :]
-            
+
             key_value = KeyValue(
                 key=key,
                 value=value,

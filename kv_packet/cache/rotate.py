@@ -122,6 +122,56 @@ def rerotate_embeddings(
     return x_p_new
 
 
+def rerotate_kv_energy(
+    kv: HFCache,
+    model,
+    old_pos: torch.Tensor,
+    new_pos: torch.Tensor,
+) -> HFCache:
+    """Re-rotate KV cache keys (and values, since V=K) for EGPT models.
+
+    EGPT's RoPE module has interface: rope(max_len, dtype) -> (cos_table, sin_table)
+    where tables are shape (max_len, rope_dim). We index with position deltas ourselves.
+    """
+    inner = model.model
+    rope = getattr(inner, "rope", None) or getattr(getattr(inner, "transformer", None), "rope", None)
+    if rope is None:
+        return kv
+
+    p_delta = new_pos - old_pos  # (1, seq_len)
+    max_pos = int(p_delta.max().item()) + 1
+
+    sample_dtype = kv.key_cache[0].dtype
+    cos_table, sin_table = rope(max_pos, dtype=sample_dtype)
+
+    cos_delta = cos_table[p_delta.squeeze(0)].unsqueeze(0).unsqueeze(0)
+    sin_delta = sin_table[p_delta.squeeze(0)].unsqueeze(0).unsqueeze(0)
+
+    rope_dim = cos_delta.shape[-1]
+
+    for layer in kv.layers:
+        key = layer.keys
+        head_dim = key.shape[-1]
+        if rope_dim < head_dim:
+            k_rope = key[..., :rope_dim]
+            k_pass = key[..., rope_dim:]
+            k_rope = (k_rope * cos_delta) + (rotate_half(k_rope) * sin_delta)
+            layer.keys = torch.cat([k_rope, k_pass], dim=-1)
+        else:
+            layer.keys = (key * cos_delta) + (rotate_half(key) * sin_delta)
+        # V = K in EGPT, so re-rotate values too
+        value = layer.values
+        if rope_dim < head_dim:
+            v_rope = value[..., :rope_dim]
+            v_pass = value[..., rope_dim:]
+            v_rope = (v_rope * cos_delta) + (rotate_half(v_rope) * sin_delta)
+            layer.values = torch.cat([v_rope, v_pass], dim=-1)
+        else:
+            layer.values = (value * cos_delta) + (rotate_half(value) * sin_delta)
+
+    return kv
+
+
 def rerotate_kv[T: KVCache|HFCache](
     kv: T,
     rotary_emb: SupportedRotaryEmbedding,
@@ -194,7 +244,7 @@ def rerotate_kv_p[T: KVCache|HFCache](
 ) -> T:
     """
     Re-rotates the key tensors in the KV cache from old_pos to new_pos.
-    
+
     Args:
     - kv (KVCache|HFCache): The KV cache containing key tensors to be re-rotated.
     - rotary_emb (LlamaRotaryEmbedding): The rotary embedding module.
@@ -229,7 +279,7 @@ def rerotate_kv_p[T: KVCache|HFCache](
                 continue
             assert key_states is not None
             assert value_states is not None
-            
+
             assert old_pos.shape == (key_states.size(0), key_states.size(2))
             assert new_pos.shape == (key_states.size(0), key_states.size(2))
 

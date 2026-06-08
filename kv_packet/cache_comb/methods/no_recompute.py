@@ -4,8 +4,8 @@ from typing import Callable
 from transformers import GenerationConfig
 from ..utils import get_cumsum_pos
 from ..abc import ResultDict, TokenizerType
-from ...model import SupportedModel
-from ...cache.rotate import rerotate_kv_p, rerotate_kv_flops
+from ...model import SupportedModel, is_energy_model
+from ...cache.rotate import rerotate_kv_p, rerotate_kv_flops, rerotate_kv_energy
 from ...utils.generate import get_answers
 from ...utils.metric import f1_states
 from ...cache import KVCache,  concate_kv_caches, get_kv_caches
@@ -69,17 +69,21 @@ def no_recompute_eval(
     torch.cuda.synchronize()
     start_time = time()
 
-    nope_dim = getattr(model.config, "qk_nope_head_dim", None)
-    assert isinstance(nope_dim, int|None)
-    full_kv = rerotate_kv_p(full_kv, model.model.rotary_emb, old_pos, new_pos, nope_dim=nope_dim)
-    num_flops += rerotate_kv_flops(full_kv, nope_dim=nope_dim)
+    if is_energy_model(model):
+        full_kv = rerotate_kv_energy(full_kv, model, old_pos, new_pos)
+        num_flops += rerotate_kv_flops(full_kv, nope_dim=None)
+    else:
+        nope_dim = getattr(model.config, "qk_nope_head_dim", None)
+        assert isinstance(nope_dim, int|None)
+        full_kv = rerotate_kv_p(full_kv, model.model.rotary_emb, old_pos, new_pos, nope_dim=nope_dim)
+        num_flops += rerotate_kv_flops(full_kv, nope_dim=nope_dim)
 
     with torch.no_grad():
         model.forward(
             input_ids=q_ids, # type: ignore
             past_key_values=full_kv,
         )
-    
+
     torch.cuda.synchronize()
     end_time = time()
     ttft = end_time - start_time
