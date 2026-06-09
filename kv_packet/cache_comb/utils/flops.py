@@ -229,10 +229,11 @@ class EnergyFlopsCalculator(BaseFlopsCalculator):
         num_flops: int = 0
 
         hidden_size = get_int(self.config.hidden_size)
-        num_attention_heads = self.config.sequence_mixer_blocks[0]["num_attention_heads"]
-        num_key_value_heads = self.config.sequence_mixer_blocks[0].get("num_key_value_heads", num_attention_heads)
+        attn_args = self.config.sequence_mixer_blocks[0]
+        num_attention_heads = attn_args.num_attention_heads
+        num_key_value_heads = getattr(attn_args, "num_key_value_heads", num_attention_heads)
         head_dim = hidden_size // num_attention_heads
-        intermediate_size = self.config.mlp_blocks[0]["intermediate_size"]
+        intermediate_size = self.config.mlp_blocks[0].intermediate_size
 
         # Q, K projections (no V — value tying: V = K)
         q_proj_flops = 2 * hidden_size * num_attention_heads * head_dim * seq_len
