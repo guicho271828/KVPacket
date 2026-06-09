@@ -141,7 +141,7 @@ def rerotate_kv_energy(
     p_delta = new_pos - old_pos  # (1, seq_len)
     max_pos = int(p_delta.max().item()) + 1
 
-    sample_dtype = kv.key_cache[0].dtype
+    sample_dtype = kv.layers[0].keys.dtype
     cos_table, sin_table = rope(max_pos, dtype=sample_dtype)
 
     cos_delta = cos_table[p_delta.squeeze(0)].unsqueeze(0).unsqueeze(0)
