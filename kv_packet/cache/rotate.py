@@ -133,8 +133,8 @@ def rerotate_kv_energy(
     EGPT's RoPE module has interface: rope(max_len, dtype) -> (cos_table, sin_table)
     where tables are shape (max_len, rope_dim). We index with position deltas ourselves.
     """
-    inner = model.model
-    rope = getattr(inner, "rope", None) or getattr(getattr(inner, "transformer", None), "rope", None)
+    inner = model.transformer
+    rope = getattr(inner, "rope", None)
     if rope is None:
         return kv
 
