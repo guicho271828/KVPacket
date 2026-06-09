@@ -1,12 +1,12 @@
 {
     "model": {
-        "model_path": "Qwen/Qwen3-4B",
+        "model_path": "/proj/dmfexp/nima_shared/v2_6x2_d768/unsharded/",
         "dtype": "bfloat16",
         "device": "cuda:0",
         "generation_kwargs": {
             "max_new_tokens": 128,
             "stop_strings": [
-                "<|im_end|>"
+              "<|end_of_text|>"
             ],
             "do_sample": false,
             "use_cache": true

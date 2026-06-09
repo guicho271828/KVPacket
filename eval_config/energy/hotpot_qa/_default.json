@@ -1,27 +1,28 @@
 {
     "model": {
-        "model_path": "Qwen/Qwen3-4B",
+        "model_path": "/proj/dmfexp/nima_shared/v2_6x2_d768/unsharded/",
         "dtype": "bfloat16",
         "device": "cuda:0",
         "generation_kwargs": {
-            "max_new_tokens": 32,
+            "max_new_tokens": 512,
             "stop_strings": [
-                "<|im_end|>"
+              "<|end_of_text|>"
             ],
             "do_sample": false,
             "use_cache": true
         }
     },
     "dataset": {
-        "dataset_name": "biography",
+        "dataset_name": "hotpot_qa",
         "num_samples": 100,
-        "num_data_strs": 5,
+        "num_data_strs": 0,
         "num_shots": 0,
-        "subset": "10k",
-        "split": "test",
+        "subset": "fullwiki",
+        "split": "validation",
         "seed": 42,
         "data_kwargs": {
-            "question_type": "QA"
+            "add_inst": true,
+            "add_cot": true
         },
         "template": "qwen_3_chat"
     },
