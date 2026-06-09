@@ -2,6 +2,7 @@ from transformers import (
     LlamaForCausalLM,
     Qwen3ForCausalLM,
 )
+from lm_engine.hf_models.models.energy import EnergyForCausalLM
 from ...model import SupportedModel
 
 class BaseFlopsCalculator:
@@ -29,6 +30,8 @@ class AutoFlopsCalculator(BaseFlopsCalculator):
             self.calculator = LlamaFlopsCalculator(model)
         elif isinstance(model, Qwen3ForCausalLM):
             self.calculator = Qwen3FlopsCalculator(model)
+        elif isinstance(model, EnergyForCausalLM):
+            self.calculator = EnergyFlopsCalculator(model)
         else:
             raise ValueError(f"Unsupported model type for FLOPS calculation: {type(model)}")
 
@@ -96,7 +99,7 @@ class LlamaFlopsCalculator(BaseFlopsCalculator):
 
         attn_flops = 4 * seq_len * (seq_len + cache_len) \
             * head_dim * num_attention_heads
-        
+
         mlp_flops = 6 * seq_len * hidden_size * intermediate_size
 
         # layer norm and residual
@@ -178,7 +181,7 @@ class Qwen3FlopsCalculator(BaseFlopsCalculator):
         # Score calculation + Value aggregation
         attn_flops = 4 * seq_len * (seq_len + cache_len) \
             * head_dim * num_attention_heads
-        
+
         # 5. MLP (SwiGLU)
         # 3 Linear layers (Gate, Up, Down): 3 * (2 * H * I) * L
         mlp_flops = 6 * seq_len * hidden_size * intermediate_size
@@ -209,5 +212,65 @@ class Qwen3FlopsCalculator(BaseFlopsCalculator):
             seq_len=seq_len,
             cache_len=cache_len
         ) * num_layers
+
+        return total_flops
+
+
+class EnergyFlopsCalculator(BaseFlopsCalculator):
+    def __init__(self, model: EnergyForCausalLM):
+        self.config = model.config
+
+    def decoder_layer_flops(
+        self,
+        batch_size: int,
+        seq_len: int,
+        cache_len: int = 0
+    ) -> int:
+        num_flops: int = 0
+
+        hidden_size = get_int(self.config.hidden_size)
+        num_attention_heads = self.config.sequence_mixer_blocks[0]["num_attention_heads"]
+        num_key_value_heads = self.config.sequence_mixer_blocks[0].get("num_key_value_heads", num_attention_heads)
+        head_dim = hidden_size // num_attention_heads
+        intermediate_size = self.config.mlp_blocks[0]["intermediate_size"]
+
+        # Q, K projections (no V — value tying: V = K)
+        q_proj_flops = 2 * hidden_size * num_attention_heads * head_dim * seq_len
+        k_proj_flops = 2 * hidden_size * num_key_value_heads * head_dim * seq_len
+        # W_Q^T output projection (replaces o_proj)
+        o_proj_flops = q_proj_flops
+
+        rope_dim = self.config.rope_dim or head_dim
+        rope_flops = 3 * seq_len * rope_dim * (num_attention_heads + num_key_value_heads)
+
+        attn_flops = 4 * seq_len * (seq_len + cache_len) * head_dim * num_attention_heads
+
+        # Energy MLP: W1 and W2 (2 matrices, not 3 like SwiGLU)
+        mlp_flops = 4 * seq_len * hidden_size * intermediate_size
+
+        other_flops = 8 * seq_len * hidden_size + 2 * seq_len * hidden_size
+
+        num_flops += (
+            q_proj_flops + k_proj_flops + o_proj_flops
+            + rope_flops + attn_flops + mlp_flops + other_flops
+        ) * batch_size
+
+        return num_flops
+
+    def total_flops(
+        self,
+        batch_size: int,
+        seq_len: int,
+        cache_len: int = 0
+    ) -> int:
+        total_flops: int = 0
+        # EGPT effective layers = sum of all iterations across blocks
+        num_effective_layers = sum(self.config.layer_iterations)
+
+        total_flops += self.decoder_layer_flops(
+            batch_size=batch_size,
+            seq_len=seq_len,
+            cache_len=cache_len
+        ) * num_effective_layers
 
         return total_flops
