@@ -471,10 +471,12 @@ def get_kv_caches(
     is_energy = is_energy_model(model)
     if is_energy:
         # EGPT: no compressor support; GenerationCache needs conversion
+        # EGPT does not support inputs_embeds, only input_ids
+        if input_ids is None:
+            raise ValueError("EnergyForCausalLM requires input_ids (inputs_embeds not supported).")
         with torch.no_grad():
             result = model(
                 input_ids=input_ids,
-                inputs_embeds=input_embeds,
                 attention_mask=attention_mask,
                 position_ids=position_ids,
                 use_cache=True,

@@ -16,7 +16,7 @@ from kv_packet.dataset import get_ret_eval_generator, ANSWER_POSTPROCESS_DICT
 from kv_packet.dataset.abc import RetEvalEntry
 from kv_packet.utils.metric import calculate_metrics
 from kv_packet.utils.config import gather_config_files, load_config_file
-from kv_packet.model import SupportedModel
+from kv_packet.model import SupportedModel, is_energy_model
 
 class ModelConfig(TypedDict):
     model_path: str
@@ -193,6 +193,7 @@ def run_eval(
             inputs_ids = torch.cat([preamble_ids, doc_ids], dim=1)
             attn_mask = torch.ones_like(inputs_ids, dtype=torch.long)
             input_embeds = model.get_input_embeddings()(inputs_ids)
+            doc_input_ids = inputs_ids
         else:
             inputs = tokenizer(
                 documents,
@@ -204,7 +205,8 @@ def run_eval(
             attn_mask = inputs["attention_mask"]
 
             assert isinstance(attn_mask, torch.Tensor)
-            input_embeds = model.get_input_embeddings()(inputs['input_ids'])
+            doc_input_ids = inputs['input_ids']
+            input_embeds = model.get_input_embeddings()(doc_input_ids)
 
         assert isinstance(input_embeds, torch.Tensor)
 
@@ -266,12 +268,19 @@ def run_eval(
                 )[0]
                 kv_caches.append(kv_cache)
         else:
-            kv_caches = get_kv_caches(
-                model=model,
-                input_embeds=input_embeds,
-                attention_mask=attn_mask,
-                compressor=compressor,
-            )
+            if is_energy_model(model):
+                kv_caches = get_kv_caches(
+                    model=model,
+                    input_ids=doc_input_ids,
+                    attention_mask=attn_mask,
+                )
+            else:
+                kv_caches = get_kv_caches(
+                    model=model,
+                    input_embeds=input_embeds,
+                    attention_mask=attn_mask,
+                    compressor=compressor,
+                )
 
         if quantization_config is not None:
             kv_caches = [
