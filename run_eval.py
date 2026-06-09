@@ -110,7 +110,7 @@ def load_eval_config(loaded_json: dict) -> EvalConfig:
         )
     else:
         quantization_config = None
-    
+
     compress_config_dict = loaded_json.get("compress", None)
     if compress_config_dict is not None:
         compress_config = CompressConfig(
@@ -192,7 +192,7 @@ def run_eval(
                 indices_to_keep: list[int]|None = list(range(preamble_len))
             inputs_ids = torch.cat([preamble_ids, doc_ids], dim=1)
             attn_mask = torch.ones_like(inputs_ids, dtype=torch.long)
-            input_embeds = model.model.embed_tokens(inputs_ids)
+            input_embeds = model.get_input_embeddings()(inputs_ids)
         else:
             inputs = tokenizer(
                 documents,
@@ -204,7 +204,7 @@ def run_eval(
             attn_mask = inputs["attention_mask"]
 
             assert isinstance(attn_mask, torch.Tensor)
-            input_embeds = model.model.embed_tokens(inputs['input_ids'])
+            input_embeds = model.get_input_embeddings()(inputs['input_ids'])
 
         assert isinstance(input_embeds, torch.Tensor)
 
@@ -311,7 +311,7 @@ def run_eval(
         total_ttft += ttft
         total_flops += flops
         num_eval += 1
-    
+
     precision, recall, f1 = calculate_metrics(total_tp, total_fp, total_fn)
     avg_ttft = total_ttft / num_eval if num_eval > 0 else 0.0
     avg_flops = total_flops / num_eval if num_eval > 0 else 0.0
