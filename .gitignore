@@ -222,3 +222,8 @@ __marimo__/
 # emacs backup
 *~
 \#*
+
+# results
+**/eval_results/
+packet_wrapper/
+*.csv
