@@ -158,11 +158,9 @@ class KVCache:
         return kv_cache
 
 
-    def to_hf_cache(self, config: PretrainedConfig|None=None) -> DynamicCache:
+    def to_hf_cache(self, **kwargs) -> DynamicCache:
         """
         Convert the KVCache to a HuggingFace Cache
-        Args:
-            - config: Optional PretrainedConfig for the DynamicCache
         Returns:
             - DynamicCache: The converted HuggingFace Cache
 
@@ -174,7 +172,7 @@ class KVCache:
                 if the kv_cache is compressed. In that case, the position_ids should be
                 used to determine the correct position.
         """
-        hf_cache = DynamicCache(config=config)
+        hf_cache = DynamicCache()
         sorted_layers = sorted(self.layers)
 
         for layer_index in sorted_layers:
