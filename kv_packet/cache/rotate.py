@@ -1,5 +1,6 @@
 import torch
 from typing import TypeAlias
+from transformers.models.granite.modeling_granite import GraniteRotaryEmbedding
 from transformers.models.llama.modeling_llama import LlamaRotaryEmbedding
 from transformers.models.mistral.modeling_mistral import MistralRotaryEmbedding
 from transformers.models.deepseek_v3.modeling_deepseek_v3 import DeepseekV3RotaryEmbedding
@@ -10,6 +11,7 @@ from transformers.cache_utils import Cache as HFCache
 from . import KVCache, KeyValue
 
 SupportedRotaryEmbedding: TypeAlias = \
+    GraniteRotaryEmbedding | \
     LlamaRotaryEmbedding | \
     MistralRotaryEmbedding | \
     DeepseekV3RotaryEmbedding | \
@@ -194,7 +196,7 @@ def rerotate_kv_p[T: KVCache|HFCache](
 ) -> T:
     """
     Re-rotates the key tensors in the KV cache from old_pos to new_pos.
-    
+
     Args:
     - kv (KVCache|HFCache): The KV cache containing key tensors to be re-rotated.
     - rotary_emb (LlamaRotaryEmbedding): The rotary embedding module.
@@ -229,7 +231,7 @@ def rerotate_kv_p[T: KVCache|HFCache](
                 continue
             assert key_states is not None
             assert value_states is not None
-            
+
             assert old_pos.shape == (key_states.size(0), key_states.size(2))
             assert new_pos.shape == (key_states.size(0), key_states.size(2))
 

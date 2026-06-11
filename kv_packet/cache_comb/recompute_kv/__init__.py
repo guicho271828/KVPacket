@@ -1,6 +1,7 @@
 """ Utils for recomputing KV cache """
 import torch
 from transformers import (
+    GraniteForCausalLM,
     LlamaForCausalLM,
     Qwen3ForCausalLM,
 )
@@ -8,6 +9,7 @@ from .utils import prepare_pos_embed_and_mask, RecomputeResult
 from ...model import SupportedModel
 from ...cache import KVCache
 
+from .granite import granite_recompute_kv, granite_recompute_query
 from .llama import llama_recompute_kv, llama_recompute_query
 from .qwen3 import qwen3_recompute_kv, qwen3_recompute_query
 
@@ -34,10 +36,10 @@ def recompute_kv(
 ) -> RecomputeResult:
     """
     Recompute key and value states for a specific layer and token indices.
-    
+
     Args:
         model (SupportedModel): The model or its base model.
-        kv_cache (KVCache): The KVCache instance containing cached key-value pairs. The keys and values should 
+        kv_cache (KVCache): The KVCache instance containing cached key-value pairs. The keys and values should
             have shape [1, num_heads, seq_len, head_dim].
         hidden_states (torch.Tensor): The hidden states tensor of shape [1, len(token_idx), hidden_size].
             The positions of hidden states should be within the kv_cache.
@@ -58,7 +60,9 @@ def recompute_kv(
     Returns:
         - result_dict (dict): A dictionary containing additional information such as query states and attention weights.
     """
-    if isinstance(model, LlamaForCausalLM):
+    if isinstance(model, GraniteForCausalLM):
+        recompute_func = granite_recompute_kv
+    elif isinstance(model, LlamaForCausalLM):
         recompute_func = llama_recompute_kv
     elif isinstance(model, Qwen3ForCausalLM):
         recompute_func = qwen3_recompute_kv
@@ -96,7 +100,7 @@ def recompute_query_states(
 ) -> torch.Tensor:
     """
     Recompute only the query states for a specific layer and token indices.
-    
+
     Args:
         model (SupportedModel): The model or its base model.
         hidden_states (torch.Tensor): The hidden states tensor of shape [1, len(token_idx), hidden_size].
@@ -109,7 +113,9 @@ def recompute_query_states(
         torch.Tensor: The recomputed query states of shape [1, num_heads, len(token_idx), head_dim].
     """
     with torch.no_grad():
-        if isinstance(model, LlamaForCausalLM):
+        if isinstance(model, GraniteForCausalLM):
+            recompute_query_func = granite_recompute_query
+        elif isinstance(model, LlamaForCausalLM):
             recompute_query_func = llama_recompute_query
         elif isinstance(model, Qwen3ForCausalLM):
             recompute_query_func = qwen3_recompute_query

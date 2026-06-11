@@ -1,4 +1,5 @@
 from transformers import (
+    GraniteForCausalLM,
     LlamaForCausalLM,
     Qwen3ForCausalLM,
 )
@@ -29,6 +30,8 @@ class AutoFlopsCalculator(BaseFlopsCalculator):
             self.calculator = LlamaFlopsCalculator(model)
         elif isinstance(model, Qwen3ForCausalLM):
             self.calculator = Qwen3FlopsCalculator(model)
+        elif isinstance(model, GraniteForCausalLM):
+            self.calculator = GraniteFlopsCalculator(model)
         else:
             raise ValueError(f"Unsupported model type for FLOPS calculation: {type(model)}")
 
@@ -96,7 +99,7 @@ class LlamaFlopsCalculator(BaseFlopsCalculator):
 
         attn_flops = 4 * seq_len * (seq_len + cache_len) \
             * head_dim * num_attention_heads
-        
+
         mlp_flops = 6 * seq_len * hidden_size * intermediate_size
 
         # layer norm and residual
@@ -105,6 +108,74 @@ class LlamaFlopsCalculator(BaseFlopsCalculator):
         num_flops += (
             q_proj_flops + k_proj_flops + v_proj_flops + o_proj_flops
             + rope_flops + attn_flops + mlp_flops + other_flops
+        ) * batch_size
+
+        return num_flops
+
+
+    def total_flops(
+        self,
+        batch_size: int,
+        seq_len: int,
+        cache_len: int=0
+    ) -> int:
+        total_flops: int = 0
+        num_layers = get_int(self.config.num_hidden_layers)
+
+        total_flops += self.decoder_layer_flops(
+            batch_size=batch_size,
+            seq_len=seq_len,
+            cache_len=cache_len
+        ) * num_layers
+
+        return total_flops
+
+
+class GraniteFlopsCalculator(BaseFlopsCalculator):
+    def __init__(self, model: GraniteForCausalLM):
+        self.config = model.config
+
+    def decoder_layer_flops(
+        self,
+        batch_size: int,
+        seq_len: int,
+        cache_len: int=0
+    ) -> int:
+        num_flops: int = 0
+
+        hidden_size = get_int(self.config.hidden_size)
+        num_attention_heads = get_int(self.config.num_attention_heads)
+        head_dim = hidden_size // num_attention_heads
+
+        num_key_value_heads = get_int(self.config.num_key_value_heads)
+        intermediate_size = get_int(self.config.intermediate_size)
+
+        # Q, K, V projections
+        q_proj_flops = 2 * hidden_size * num_attention_heads * head_dim * seq_len
+        k_proj_flops = 2 * hidden_size * num_key_value_heads * head_dim * seq_len
+        v_proj_flops = k_proj_flops
+        o_proj_flops = q_proj_flops
+
+        rope_flops = 3 * seq_len * head_dim * (
+            num_attention_heads + num_key_value_heads
+        )
+
+        attn_flops = 4 * seq_len * (seq_len + cache_len) \
+            * head_dim * num_attention_heads
+
+        mlp_flops = 6 * seq_len * hidden_size * intermediate_size
+
+        # layer norm and residual
+        other_flops = 8 * seq_len * hidden_size + 2 * seq_len * hidden_size
+
+        # residual_multiplier: scalar mult applied twice per layer
+        # (once after attention, once after MLP)
+        residual_multiplier_flops = 2 * seq_len * hidden_size
+
+        num_flops += (
+            q_proj_flops + k_proj_flops + v_proj_flops + o_proj_flops
+            + rope_flops + attn_flops + mlp_flops + other_flops
+            + residual_multiplier_flops
         ) * batch_size
 
         return num_flops
@@ -178,7 +249,7 @@ class Qwen3FlopsCalculator(BaseFlopsCalculator):
         # Score calculation + Value aggregation
         attn_flops = 4 * seq_len * (seq_len + cache_len) \
             * head_dim * num_attention_heads
-        
+
         # 5. MLP (SwiGLU)
         # 3 Linear layers (Gate, Up, Down): 3 * (2 * H * I) * L
         mlp_flops = 6 * seq_len * hidden_size * intermediate_size
