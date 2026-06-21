@@ -1,5 +1,4 @@
 from typing import Iterator, Callable
-from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast
 
 from .abc import (
     RetEvalGeneratorFunc,
@@ -17,6 +16,10 @@ from .niah import (
     niah_ret_eval_generator,
     niah_answer_postprocess
 )
+from .musique import (
+    musique_ret_eval_generator,
+    musique_answer_postprocess
+)
 from .template import TEMPLATE_FUNC_DICT
 
 __all__ = [
@@ -28,6 +31,7 @@ RET_EVAL_GENERATOR_DICT: dict[str, RetEvalGeneratorFunc] = {
     "biography": bio_ret_eval_generator,
     "hotpot_qa": hotpot_qa_ret_eval_generator,
     "niah": niah_ret_eval_generator,
+    "musique": musique_ret_eval_generator,
 }
 
 
@@ -35,6 +39,7 @@ ANSWER_POSTPROCESS_DICT: dict[str, Callable[[str, str], tuple[str, str]]] = {
     "biography": biography_answer_postprocess,
     "hotpot_qa": hotpot_qa_answer_postprocess,
     "niah": niah_answer_postprocess,
+    "musique": musique_answer_postprocess,
 }
 
 def get_ret_eval_generator(
