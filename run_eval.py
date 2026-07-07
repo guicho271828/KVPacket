@@ -469,7 +469,7 @@ def run_one_config(
 if __name__ == "__main__":
     import fattrace
     fattrace.install()
-    
+
     # Parse command line arguments
     parser = argparse.ArgumentParser()
     parser.add_argument(
