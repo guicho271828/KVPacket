@@ -79,7 +79,8 @@ def sam_kv_eval(
     stable_layer_set = set(stable_layers)
     doc_query_states: list[dict[int, torch.Tensor]] = []
     for i in range(len(document_kvs)):
-        hidden_states = model.model.embed_tokens(doc_tokens[i][:, -num_local_tokens:])
+        # Granite scales embeddings before layer 0; other models have multiplier=1 (or absent)
+        hidden_states = model.model.embed_tokens(doc_tokens[i][:, -num_local_tokens:]) * getattr(model.config, "embedding_multiplier", 1)
         assert isinstance(hidden_states, torch.Tensor)
 
         if num_local_tokens >= sample_len[i]:
@@ -179,7 +180,8 @@ def sam_kv_eval(
         device=model.device, dtype=torch.long
     )
 
-    hidden_states = model.model.embed_tokens(q_ids)
+    # Granite scales embeddings before layer 0; other models have multiplier=1 (or absent)
+    hidden_states = model.model.embed_tokens(q_ids) * getattr(model.config, "embedding_multiplier", 1)
     assert isinstance(hidden_states, torch.Tensor)
 
     pos_ids_sparse = pos_ids_sparse.unsqueeze(0)
@@ -328,9 +330,10 @@ def sam_kv_eval(
     sparse_kv = concate_kv_caches(document_kvs + [dummy_query_cache]).select_seq(
         torch.tensor(abs_recompute_indices, dtype=torch.long, device=model.device)
     ) # [total_sparse_len + query_len]
+    # Granite scales embeddings before layer 0; other models have multiplier=1 (or absent)
     hidden_states = model.model.embed_tokens(
         torch.cat(doc_tokens+[q_ids], dim=1)[:, abs_recompute_indices]
-    )
+    ) * getattr(model.config, "embedding_multiplier", 1)
     assert isinstance(hidden_states, torch.Tensor)
     pos_ids = torch.arange(
         0, total_data_len + query_len,

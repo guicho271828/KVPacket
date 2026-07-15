@@ -122,9 +122,10 @@ def cache_blend_eval(
     first_doc_len = sample_len[0]
     seq_len = total_data_len - first_doc_len
 
+    # Granite scales embeddings before layer 0; other models have multiplier=1 (or absent)
     hidden_states = model.model.embed_tokens(
         torch.cat(doc_tokens, dim=1)
-    )[:, first_doc_len:, :]  # [1, seq_len + query_len, hidden_size]
+    )[:, first_doc_len:, :] * getattr(model.config, "embedding_multiplier", 1)
     pos_ids = torch.arange(0, total_data_len + query_len, dtype=torch.long, device=model.device).unsqueeze(0)  # [1, total_data_len]
 
     ## Only recompute tokens after the first doc

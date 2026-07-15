@@ -125,9 +125,10 @@ def rand_recompute_eval(
         max_index = 0
 
     recompute_indices += list(range(total_data_len, total_data_len + query_len))
+    # Granite scales embeddings before layer 0; other models have multiplier=1 (or absent)
     hidden_states = model.model.embed_tokens(
         torch.cat(doc_tokens, dim=1)[:, recompute_indices]
-    )
+    ) * getattr(model.config, "embedding_multiplier", 1)
     pos_ids = torch.arange(
         0, total_data_len + query_len,
         dtype=torch.long, device=model.device

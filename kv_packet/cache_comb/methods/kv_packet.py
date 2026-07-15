@@ -207,7 +207,8 @@ def kv_packet_eval_attn(
     recompute_indices = list(
         range(total_cache_len, total_cache_len + query_len)
     )
-    hidden_states: torch.Tensor = model.model.embed_tokens(q_ids)
+    # Granite scales embeddings before layer 0; other models have multiplier=1 (or absent)
+    hidden_states: torch.Tensor = model.model.embed_tokens(q_ids) * getattr(model.config, "embedding_multiplier", 1)
     pos_ids = torch.arange(
         0, total_cache_len + query_len,
         dtype=torch.long,
